@@ -1,16 +1,63 @@
 import argparse
 import os, sys
-
+import argparse
+import os, sys
+from rdkit.Chem.rdchem import Mol, Atom, Bond
 from rdkit import Chem
 
 
 smiles = ""
 debug_mode = False
+idx_can = "idx_canonical"
+nboors_score = "neighbors_score"
 
+# Relaxation - Initialization
+def m_relax_initialize(mol: Mol):
+    mol.SetIntProp("i",1)
+    mol.SetIntProp("c",1)
+    for atom in mol.GetAtoms():
+        atom.SetIntProp(idx_can, 1)
+        atom.SetIntProp(nboors_score, 1)
 
-# Perform relaxation step to assign EC labels
-def morgan_relaxation(mol):
-    pass # TODO
+#Neighbors addition
+def neighbors_addition(atom : Atom):
+    neighbors = atom.GetNeighbors()
+    sum = 0
+    for neighbor in neighbors:
+        sum = sum + neighbor.GetProp("i")
+    atom.SetIntProp(nboors_score, sum)
+
+# Relaxation - Neighbors addition
+def m_relax(mol: Mol):
+    prev_Mol : Mol
+    while(True):
+        #Set the current number of tags to 0        
+        C = []
+        #Iterate all atoms, perform the addition, and append distinct scores
+        for atom in mol.GetAtoms():
+            neighbors_addition(atom)
+            if atom.GetProp(nboors_score) not in C:
+                C.append(atom.GetProp(nboors_score))
+        
+        #If the number of current tags does not increases, regarding number of previous tags
+        if C.count < mol.GetProp("c"):
+            #Use previous molecule iteration
+            mol = prev_Mol
+            #Finalize the algorithm
+            break
+
+        #Use current number of tags as previous number of tags
+        mol.SetIntProp("c",C.count)
+        #Increase the number of the iteration
+        mol.SetIntProp("i", mol.GetIntProp("i")+1)
+        #Save current molecule as the previous molecule
+        prev_Mol = mol.__copy__()
+
+# Relaxation - General handler
+def morgan_relax_handler(mol : Mol):
+    
+    #Initialize
+    m_relax_initialize(mol)
 
 
 # Derive canonical numbering based on final EC labelling
@@ -23,7 +70,7 @@ def assign_custom_atom_id(mol, canonical):
 
     if canonical:
         # Use Morgan algorithm to deriva a canonical graph numbering
-        morgan_relaxation(mol)
+        morgan_relax_handler(mol)
         morgan_enumeration(mol)
     else:
         # Most simple strategy: just copy RDKit internal atom ID
