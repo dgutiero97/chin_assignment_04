@@ -58,6 +58,8 @@ def morgan_relax_handler(mol : Mol):
     
     #Initialize
     m_relax_initialize(mol)
+    #Relaxation
+    m_relax(mol)
 
 
 # Derive canonical numbering based on final EC labelling
