@@ -9,15 +9,16 @@ from rdkit import Chem
 smiles = ""
 debug_mode = False
 idx_can = "idx_canonical"
-nboors_score = "neighbors_score"
+score = "score"
+max_score_idx = "maximun_nboors_score_atom_index"
+canon_label = "canonical_order_label"
 
 # Relaxation - Initialization
 def m_relax_initialize(mol: Mol):
     mol.SetIntProp("i",1)
     mol.SetIntProp("c",1)
     for atom in mol.GetAtoms():
-        atom.SetIntProp(idx_can, 1)
-        atom.SetIntProp(nboors_score, 1)
+        atom.SetIntProp(score, 1)
 
 #Neighbors addition
 def neighbors_addition(atom : Atom):
@@ -25,7 +26,7 @@ def neighbors_addition(atom : Atom):
     sum = 0
     for neighbor in neighbors:
         sum = sum + neighbor.GetProp("i")
-    atom.SetIntProp(nboors_score, sum)
+    atom.SetIntProp(score, sum)
 
 # Relaxation - Neighbors addition
 def m_relax(mol: Mol):
@@ -36,8 +37,8 @@ def m_relax(mol: Mol):
         #Iterate all atoms, perform the addition, and append distinct scores
         for atom in mol.GetAtoms():
             neighbors_addition(atom)
-            if atom.GetProp(nboors_score) not in C:
-                C.append(atom.GetProp(nboors_score))
+            if atom.GetProp(score) not in C:
+                C.append(atom.GetProp(score))
         
         #If the number of current tags does not increases, regarding number of previous tags
         if C.count < mol.GetProp("c"):
@@ -61,10 +62,57 @@ def morgan_relax_handler(mol : Mol):
     #Relaxation
     m_relax(mol)
 
+#Initialization phase of Morgan Canonical enumeration phase
+def morg_enum_initialization(mol : Mol):
+
+    max = 0;
+    mol.SetIntProp("c",2)
+
+    atom: Atom
+    for atom in mol.GetAtoms():
+        atom.SetIntProp(idx_can, 0)
+        if max > atom.GetIntProp(score):
+            max = atom.GetIntProp(score)
+            Mol.SetIntProp(max_score_idx,atom.GetIdx)
+    
+    mol.GetAtomWithIdx(mol.GetIntProp(max_score_idx)).SetIntProp(canon_label, 1)
+
+#TODO: AQUI
+#Iterative phase of Morgan Canonical enumeration phase
+def morg_enum(mol : Mol):
+    
+    #Obtain the atom with max score
+    atom: Atom = mol.GetAtomWithIdx(mol.GetIntProp(max_score_idx))
+
+    #Find the best neighboor of all of them
+    best_nboor = None
+    best_value = None
+    for nboor_atom in atom.GetNeighbors():
+        #Initialize
+        if best_value is None:
+            best_value = nboor_atom.GetIntProp(score)
+            best_nboor = nboor_atom
+        #Find best score
+        if nboor_atom.GetIntProp(score) > best_value:
+            best_value = nboor_atom.GetIntProp(score)
+            best_nboor = nboor_atom
+        #Check by other conditions
+        elif nboor_atom.GetIntProp(score) == best_value:
+            pass #TODO:
+        #In case we have full equality
+        else:
+            pass #TODO: pick at random
+
+
+
+
 
 # Derive canonical numbering based on final EC labelling
-def morgan_enumeration(mol):
-    pass # TODO
+def morgan_enum_handler(mol : Mol):
+    #Initialize the labels
+    morg_enum_initialization(mol)
+    #Perform the algorithm
+    morg_enum(mol)
 
 
 # Assign a custom ID to the atoms in a given molecule
@@ -73,7 +121,7 @@ def assign_custom_atom_id(mol, canonical):
     if canonical:
         # Use Morgan algorithm to deriva a canonical graph numbering
         morgan_relax_handler(mol)
-        morgan_enumeration(mol)
+        morgan_enum_handler(mol)
     else:
         # Most simple strategy: just copy RDKit internal atom ID
         for atom in mol.GetAtoms():
