@@ -4,7 +4,8 @@ import argparse
 import os, sys
 from rdkit.Chem.rdchem import Mol, Atom, Bond
 from rdkit import Chem
-
+from functools import cmp_to_key
+import random
 
 smiles = ""
 debug_mode = False
@@ -77,42 +78,88 @@ def morg_enum_initialization(mol : Mol):
     
     mol.GetAtomWithIdx(mol.GetIntProp(max_score_idx)).SetIntProp(canon_label, 1)
 
-#TODO: AQUI
-#Iterative phase of Morgan Canonical enumeration phase
-def morg_enum(mol : Mol):
+def compare_nboors(a: Atom, b: Atom, origin:Atom):
     
-    #Obtain the atom with max score
+    #Properties used for comparision
+    a_score = a.GetIntProp(score)
+    b_score = b.GetIntProp(score)
+    a_an = a.GetAtomicNum()
+    b_an = b.GetAtomicNum()
+    a_deg = a.GetDegree()
+    b_deg = b.GetDegree()
+    a_bond = mol.GetBondBetweenAtoms(origin.GetIdx(), a.GetIdx()).GetBondType()
+    b_bond = mol.GetBondBetweenAtoms(origin.GetIdx(), b.GetIdx()).GetBondType()
+
+    #No need to order
+    if a_score < b_score:
+        return 1
+    if a_score > b_score:
+        return -1
+
+    #Order based on atomic number
+    if a_an > b_an:
+        return -1
+    if a_an < b_an:
+        return 1
+
+    #Order based on connected neighbors
+    if a_deg > b_deg:
+        return -1
+    if a_deg < b_deg:
+        return 1
+
+    #Order based on bondings TRIPLE > DOUBLE > SINGLE
+    if a_bond == Chem.rdchem.BondType.TRIPLE and b_bond != Chem.rdchem.BondType.TRIPLE:
+        return -1
+    if b_bond == Chem.rdchem.BondType.TRIPLE and a_bond != Chem.rdchem.BondType.TRIPLE:
+        return 1
+    if a_bond == Chem.rdchem.BondType.DOUBLE and b_bond not in (Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.DOUBLE):
+        return -1
+    if b_bond == Chem.rdchem.BondType.DOUBLE and a_bond not in (Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.DOUBLE):
+        return 1
+    if a_bond == Chem.rdchem.BondType.AROMATIC and b_bond == Chem.rdchem.BondType.SINGLE:
+        return -1
+    if b_bond == Chem.rdchem.BondType.AROMATIC and a_bond == Chem.rdchem.BondType.SINGLE:
+        return 1
+
+    #Full equality → random
+    return -1 if random.random() < 0.5 else 1
+
+
+#Iterative phase of Morgan Canonical enumeration phase
+def morg_enumeration(mol : Mol):
+    
+    #The first atom
     atom: Atom = mol.GetAtomWithIdx(mol.GetIntProp(max_score_idx))
-
-    #Find the best neighboor of all of them
-    best_nboor = None
-    best_value = None
-    for nboor_atom in atom.GetNeighbors():
-        #Initialize
-        if best_value is None:
-            best_value = nboor_atom.GetIntProp(score)
-            best_nboor = nboor_atom
-        #Find best score
-        if nboor_atom.GetIntProp(score) > best_value:
-            best_value = nboor_atom.GetIntProp(score)
-            best_nboor = nboor_atom
-        #Check by other conditions
-        elif nboor_atom.GetIntProp(score) == best_value:
-            pass #TODO:
-        #In case we have full equality
-        else:
-            pass #TODO: pick at random
+    #Create a dict that assotiates the labels to their indexes (ease of access)
+    label = 1
+    label_index_dict = {}
+    label_index_dict[label] = atom.GetAtomWithIdx(mol.GetIntProp(max_score_idx))
+    #Compute total number of atoms
+    total_atoms = len(list(mol.GetAtoms.count()))
 
 
-
-
+    while len(labels) < total_atoms:
+        #Obtain and sort neighbors
+        nbors_sorted = list(atom.GetNeighbors())
+        neighbors_sorted = sorted(
+            nbors_sorted, key=cmp_to_key(compare_nboors)
+        ) 
+        #Assing lables
+        for nbor in nbors_sorted:
+            if nbor.GetIntProp(label) == 0:
+                label = label + 1
+                label_index_dict[label] = nbor.GetIdx
+                atom.SetIntProp(canon_label,label)
+        #Pick next atom
+        atom = mol.GetAtomWithIdx(label_index_dict[label])            
 
 # Derive canonical numbering based on final EC labelling
 def morgan_enum_handler(mol : Mol):
     #Initialize the labels
     morg_enum_initialization(mol)
     #Perform the algorithm
-    morg_enum(mol)
+    morg_enumeration(mol)
 
 
 # Assign a custom ID to the atoms in a given molecule
