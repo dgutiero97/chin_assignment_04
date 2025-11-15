@@ -25,39 +25,47 @@ def m_relax_initialize(mol: Mol):
     for atom in mol.GetAtoms():
         atom.SetIntProp(score, 1)
 
-#Neighbors addition
-def neighbors_addition(atom : Atom):
-    neighbors = atom.GetNeighbors()
-    sum = 0
-    for neighbor in neighbors:
-        sum = sum + neighbor.GetIntProp(score)
-    atom.SetIntProp(score, sum)
-
-# Relaxation - Neighbors addition
+# Relaxation - Neighbors addition loop
 def m_relax(mol: Mol):
-    prev_Mol : Mol
     while(True):
+        # Save the previous molecule state
+        prev_Mol = Chem.Mol(mol)
+        prev_c = mol.GetIntProp("c")
+
         #Set the current number of tags to 0        
         C = []
-        #Iterate all atoms, perform the addition, and append distinct scores
+
+        #Iterate all atoms
+        atom: Atom
         for atom in mol.GetAtoms():
-            neighbors_addition(atom)
-            if atom.GetIntProp(score) not in C:
-                C.append(atom.GetIntProp(score))
+            #Obtain its previous state
+            prev_atom: Atom = prev_Mol.GetAtomWithIdx(atom.GetIdx())
+            #Compute neighbors addition using scores from previous state
+            total = 0
+            neighbors = prev_atom.GetNeighbors()
+            for neighbor in neighbors:
+                total = total + neighbor.GetIntProp(score)
+            atom.SetIntProp(score, total)
+
+            #Append new unique label, in case it is
+            if total not in C:
+                C.append(total)
         
-        #If the number of current tags does not increases, regarding number of previous tags
-        if len(C) <= mol.GetIntProp("c"):
-            #Use previous molecule iteration
-            mol = prev_Mol
+        #If the number of current tags does not increases, respect previous iteration number of tags
+        if len(C) <= prev_c:
+            #Use previous molecule iteration: restore scores from prev_Mol
+            #(Pitty we cannot just change the reference of the object)
+            for atom in mol.GetAtoms():
+                prev_atom = prev_Mol.GetAtomWithIdx(atom.GetIdx())
+                atom.SetIntProp(score, prev_atom.GetIntProp(score))
+            mol.SetIntProp("c", prev_c)
             #Finalize the algorithm
             break
 
-        #Use current number of tags as previous number of tags
-        mol.SetIntProp("c",len(C))
-        #Increase the number of the iteration
-        mol.SetIntProp("i", mol.GetIntProp("i")+1)
-        #Save current molecule as the previous molecule
-        prev_Mol = mol.__copy__()
+        #Set number of tags and increase the iteration counter
+        mol.SetIntProp("c", len(C))
+        mol.SetIntProp("i", mol.GetIntProp("i") + 1)
+
 
 # Relaxation - General handler
 def morgan_relax_handler(mol : Mol):
@@ -72,62 +80,70 @@ def morg_enum_initialization(mol : Mol):
 
     max = 0;
     mol.SetIntProp("c",2)
+    atom_max : Atom
 
-    atom: Atom
     for atom in mol.GetAtoms():
         atom.SetIntProp(label, 0)
-        if max > atom.GetIntProp(score):
+        if max < atom.GetIntProp(score):
+            atom_max = atom
             max = atom.GetIntProp(score)
-            Mol.SetIntProp(max_score_idx,atom.GetIdx)
+            
+    mol.SetIntProp(max_score_idx,atom_max.GetIdx())
+    atom_max.SetIntProp(label, 1)
+
+def sort_neighbors(atom_origin: Atom, mol: Mol):
     
-    mol.GetAtomWithIdx(mol.GetIntProp(max_score_idx)).SetIntProp(label, 1)
+    atom_nbors = list(atom_origin.GetNeighbors())
 
-def compare_nboors(a: Atom, b: Atom, origin:Atom):
-    
-    #Properties used for comparision
-    a_score = a.GetIntProp(score)
-    b_score = b.GetIntProp(score)
-    a_an = a.GetAtomicNum()
-    b_an = b.GetAtomicNum()
-    a_deg = a.GetDegree()
-    b_deg = b.GetDegree()
-    a_bond = mol.GetBondBetweenAtoms(origin.GetIdx(), a.GetIdx()).GetBondType()
-    b_bond = mol.GetBondBetweenAtoms(origin.GetIdx(), b.GetIdx()).GetBondType()
+    def compare_nboors(a: Atom, b: Atom):
+        
+        #Properties used for comparision
+        a_score = a.GetIntProp(score)
+        b_score = b.GetIntProp(score)
+        a_an = a.GetAtomicNum()
+        b_an = b.GetAtomicNum()
+        a_deg = a.GetDegree()
+        b_deg = b.GetDegree()
+        a_bond = mol.GetBondBetweenAtoms(atom_origin.GetIdx(), a.GetIdx()).GetBondType()
+        b_bond = mol.GetBondBetweenAtoms(atom_origin.GetIdx(), b.GetIdx()).GetBondType()
 
-    #No need to order
-    if a_score < b_score:
-        return 1
-    if a_score > b_score:
-        return -1
+        #No need to order
+        if a_score < b_score:
+            return 1
+        if a_score > b_score:
+            return -1
 
-    #Order based on atomic number
-    if a_an > b_an:
-        return -1
-    if a_an < b_an:
-        return 1
+        #Order based on atomic number
+        if a_an > b_an:
+            return -1
+        if a_an < b_an:
+            return 1
 
-    #Order based on connected neighbors
-    if a_deg > b_deg:
-        return -1
-    if a_deg < b_deg:
-        return 1
+        #Order based on connected neighbors
+        if a_deg > b_deg:
+            return -1
+        if a_deg < b_deg:
+            return 1
 
-    #Order based on bondings TRIPLE > DOUBLE > SINGLE
-    if a_bond == Chem.rdchem.BondType.TRIPLE and b_bond != Chem.rdchem.BondType.TRIPLE:
-        return -1
-    if b_bond == Chem.rdchem.BondType.TRIPLE and a_bond != Chem.rdchem.BondType.TRIPLE:
-        return 1
-    if a_bond == Chem.rdchem.BondType.DOUBLE and b_bond not in (Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.DOUBLE):
-        return -1
-    if b_bond == Chem.rdchem.BondType.DOUBLE and a_bond not in (Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.DOUBLE):
-        return 1
-    if a_bond == Chem.rdchem.BondType.AROMATIC and b_bond == Chem.rdchem.BondType.SINGLE:
-        return -1
-    if b_bond == Chem.rdchem.BondType.AROMATIC and a_bond == Chem.rdchem.BondType.SINGLE:
-        return 1
+        #Order based on bondings TRIPLE > DOUBLE > SINGLE
+        if a_bond == Chem.rdchem.BondType.TRIPLE and b_bond != Chem.rdchem.BondType.TRIPLE:
+            return -1
+        if b_bond == Chem.rdchem.BondType.TRIPLE and a_bond != Chem.rdchem.BondType.TRIPLE:
+            return 1
+        if a_bond == Chem.rdchem.BondType.DOUBLE and b_bond not in (Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.DOUBLE):
+            return -1
+        if b_bond == Chem.rdchem.BondType.DOUBLE and a_bond not in (Chem.rdchem.BondType.TRIPLE, Chem.rdchem.BondType.DOUBLE):
+            return 1
+        if a_bond == Chem.rdchem.BondType.AROMATIC and b_bond == Chem.rdchem.BondType.SINGLE:
+            return -1
+        if b_bond == Chem.rdchem.BondType.AROMATIC and a_bond == Chem.rdchem.BondType.SINGLE:
+            return 1
 
-    #Full equality → random
-    return -1 if random.random() < 0.5 else 1
+        #Full equality → random
+        return -1 if random.random() < 0.5 else 1
+
+    atom_nbors_sorted = sorted(atom_nbors, key=cmp_to_key(compare_nboors))
+    return atom_nbors_sorted
 
 
 #Iterative phase of Morgan Canonical enumeration phase
@@ -139,22 +155,19 @@ def morg_enumeration(mol : Mol):
     current_label = 1
     current_atom = 1
     label_index_dict = {}
-    label_index_dict[current_label] = atom.GetAtomWithIdx(mol.GetIntProp(max_score_idx))
+    label_index_dict[current_label] = atom.GetIdx()
     #Compute total number of atoms
-    total_atoms = len(list(mol.GetAtoms.count()))
+    total_atoms = len(list(mol.GetAtoms()))
 
-    while len(label_index_dict) <= total_atoms:
+    while len(label_index_dict) < total_atoms:
         #Obtain and sort neighbors
-        nbors_sorted = list(atom.GetNeighbors())
-        neighbors_sorted = sorted(
-            nbors_sorted, key=cmp_to_key(compare_nboors)
-        ) 
+        nbors_sorted = sort_neighbors(atom, mol)
         #Assing lables
         for nbor in nbors_sorted:
-            if nbor.GetIntProp(current_label) == 0:
+            if nbor.GetIntProp(label) == 0:
                 current_label = current_label + 1
-                label_index_dict[current_label] = nbor.GetIdx
-                atom.SetIntProp(label,current_label)
+                label_index_dict[current_label] = nbor.GetIdx()
+                nbor.SetIntProp(label,current_label)
         #Pick next atom
         current_atom = current_atom + 1
         atom = mol.GetAtomWithIdx(label_index_dict[current_atom]) 
