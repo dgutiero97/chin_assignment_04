@@ -30,7 +30,7 @@ def neighbors_addition(atom : Atom):
     neighbors = atom.GetNeighbors()
     sum = 0
     for neighbor in neighbors:
-        sum = sum + neighbor.GetProp("i")
+        sum = sum + neighbor.GetIntProp(score)
     atom.SetIntProp(score, sum)
 
 # Relaxation - Neighbors addition
@@ -42,18 +42,18 @@ def m_relax(mol: Mol):
         #Iterate all atoms, perform the addition, and append distinct scores
         for atom in mol.GetAtoms():
             neighbors_addition(atom)
-            if atom.GetProp(score) not in C:
-                C.append(atom.GetProp(score))
+            if atom.GetIntProp(score) not in C:
+                C.append(atom.GetIntProp(score))
         
         #If the number of current tags does not increases, regarding number of previous tags
-        if C.count < mol.GetProp("c"):
+        if len(C) <= mol.GetIntProp("c"):
             #Use previous molecule iteration
             mol = prev_Mol
             #Finalize the algorithm
             break
 
         #Use current number of tags as previous number of tags
-        mol.SetIntProp("c",C.count)
+        mol.SetIntProp("c",len(C))
         #Increase the number of the iteration
         mol.SetIntProp("i", mol.GetIntProp("i")+1)
         #Save current molecule as the previous molecule
@@ -195,7 +195,7 @@ def assign_custom_atom_id(mol, canonical):
     else:
         # Most simple strategy: just copy RDKit internal atom ID
         for atom in mol.GetAtoms():
-            atom.SetProp("CID", str(atom.GetIdx()))
+            atom.SetIntProp("CID", str(atom.GetIdx()))
 
 
 # Return SMILES primitive for a given bond
@@ -244,7 +244,7 @@ def mol_dft(atom):
         # Get sorted list of incident bonds
         # that have not been visited yet
         bonds = [bond for bond in atom.GetBonds() if not bond.HasProp("VISITED")]
-        bonds.sort(key=lambda x: int(x.GetOtherAtom(atom).GetProp("CID")))
+        bonds.sort(key=lambda x: int(x.GetOtherAtom(atom).GetIntProp("CID")))
 
         # Iterate over all remaining bonds
         for i in range(len(bonds)):
@@ -310,7 +310,7 @@ parser.add_argument("-o", "--overwrite", action="store_true", help="Overwrite ex
 # In case of debugging from code editor
 if debug_visual_code:
     vs_input_file = "resources/chin-materials-a4/aspirin.sdf"
-    vs_output_file = "output/log" + datetime.now() + ".txt"
+    vs_output_file = "output/log" + str(datetime.now()) + ".txt"
     vs_debug_flag = "-d"
     vs_overwrite = "-o"
     vs_args = [vs_input_file, vs_output_file, vs_debug_flag, vs_overwrite]
