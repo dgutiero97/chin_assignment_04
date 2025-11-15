@@ -6,13 +6,17 @@ from rdkit.Chem.rdchem import Mol, Atom, Bond
 from rdkit import Chem
 from functools import cmp_to_key
 import random
+from datetime import datetime
 
 smiles = ""
 debug_mode = False
-idx_can = "idx_canonical"
-score = "score"
-max_score_idx = "maximun_nboors_score_atom_index"
-canon_label = "canonical_order_label"
+score = "score_by_EC"
+max_score_idx = "maximun_EC_score_atom_index"
+label = "canonical_label"
+
+#
+# Morgans algorithm
+#
 
 # Relaxation - Initialization
 def m_relax_initialize(mol: Mol):
@@ -71,12 +75,12 @@ def morg_enum_initialization(mol : Mol):
 
     atom: Atom
     for atom in mol.GetAtoms():
-        atom.SetIntProp(idx_can, 0)
+        atom.SetIntProp(label, 0)
         if max > atom.GetIntProp(score):
             max = atom.GetIntProp(score)
             Mol.SetIntProp(max_score_idx,atom.GetIdx)
     
-    mol.GetAtomWithIdx(mol.GetIntProp(max_score_idx)).SetIntProp(canon_label, 1)
+    mol.GetAtomWithIdx(mol.GetIntProp(max_score_idx)).SetIntProp(label, 1)
 
 def compare_nboors(a: Atom, b: Atom, origin:Atom):
     
@@ -132,14 +136,14 @@ def morg_enumeration(mol : Mol):
     #The first atom
     atom: Atom = mol.GetAtomWithIdx(mol.GetIntProp(max_score_idx))
     #Create a dict that assotiates the labels to their indexes (ease of access)
-    label = 1
+    current_label = 1
+    current_atom = 1
     label_index_dict = {}
-    label_index_dict[label] = atom.GetAtomWithIdx(mol.GetIntProp(max_score_idx))
+    label_index_dict[current_label] = atom.GetAtomWithIdx(mol.GetIntProp(max_score_idx))
     #Compute total number of atoms
     total_atoms = len(list(mol.GetAtoms.count()))
 
-
-    while len(labels) < total_atoms:
+    while len(label_index_dict) <= total_atoms:
         #Obtain and sort neighbors
         nbors_sorted = list(atom.GetNeighbors())
         neighbors_sorted = sorted(
@@ -147,20 +151,39 @@ def morg_enumeration(mol : Mol):
         ) 
         #Assing lables
         for nbor in nbors_sorted:
-            if nbor.GetIntProp(label) == 0:
-                label = label + 1
-                label_index_dict[label] = nbor.GetIdx
-                atom.SetIntProp(canon_label,label)
+            if nbor.GetIntProp(current_label) == 0:
+                current_label = current_label + 1
+                label_index_dict[current_label] = nbor.GetIdx
+                atom.SetIntProp(label,current_label)
         #Pick next atom
-        atom = mol.GetAtomWithIdx(label_index_dict[label])            
+        current_atom = current_atom + 1
+        atom = mol.GetAtomWithIdx(label_index_dict[current_atom]) 
 
-# Derive canonical numbering based on final EC labelling
+# Derive canonical numbering based on EC score
 def morgan_enum_handler(mol : Mol):
     #Initialize the labels
     morg_enum_initialization(mol)
     #Perform the algorithm
     morg_enumeration(mol)
 
+#Pretty print used for debugging purposes
+def prettyPrint(mol: Mol):
+    print("\n #####################")
+    print("\n MOLECULE PRETTY PRINT")
+    print("\n #####################")
+    for atom in mol.GetAtoms():
+        # Imprimir línea del átomo
+        print(f"Atom: {atom.GetSymbol()}")
+        print(f"  Index: {atom.GetIdx()}")
+        print(f"  Score: {atom.GetIntProp(score)}")
+        print(f"  Label: {atom.GetIntProp(label)}")
+        print("")   # línea en blanco entre átomos
+
+
+
+#
+# Smiles construction
+#
 
 # Assign a custom ID to the atoms in a given molecule
 def assign_custom_atom_id(mol, canonical):
@@ -275,16 +298,28 @@ def generate_smiles(mol):
 # Main script
 # ----------------------------------------------------------
 
+# Debug mode toggle
+debug_visual_code = True
 
-# Command-line argument parsing
 parser = argparse.ArgumentParser()
 parser.add_argument("i", help="SDF MOL input file")
 parser.add_argument("o", help="CSV output file")
 parser.add_argument("-d", "--debug", action="store_true", help="Run in debug mode")
 parser.add_argument("-o", "--overwrite", action="store_true", help="Overwrite existing output file")
 
-args = parser.parse_args()
+# In case of debugging from code editor
+if debug_visual_code:
+    vs_input_file = "resources/chin-materials-a4/aspirin.sdf"
+    vs_output_file = "output/log" + datetime.now() + ".txt"
+    vs_debug_flag = "-d"
+    vs_overwrite = "-o"
+    vs_args = [vs_input_file, vs_output_file, vs_debug_flag, vs_overwrite]
+    args = parser.parse_args(vs_args)
+#In case of executing from command line
+else:
+    args = parser.parse_args()
 
+#Validate main variables
 if not os.path.isfile(args.i):
     parser.print_help(sys.stderr)
     sys.exit(1)
@@ -296,14 +331,10 @@ if os.path.isfile(args.o) and not args.overwrite:
     print("To overwrite use '--overwrite'.")
     sys.exit(1)
 
-# Set debug mode according to presence of command line flag
-debug_mode = args.debug
-
-
 # Read SD input file
 file_i = Chem.SDMolSupplier(args.i)
 
-# Open output file
+# Open output file and write header
 file_o = open(args.o, "w")
 file_o.write("mol_id\tSMILES\n")
 
@@ -312,10 +343,12 @@ mol_id = 1
 for mol in file_i:
     print("-- Processing molecule " + str(mol_id))
 
+    #Asign canonical ids to atoms
+    assign_custom_atom_id(mol, True)
+    #Print canonical ids
+    if args.debug:  prettyPrint(mol)
     # Generate SMILES
-    assign_custom_atom_id(mol, False)
     generate_smiles(mol)
-
     # Append SMILES to output file
     out_str = "{}\t{}".format(format(mol_id,'05d'), smiles)
     file_o.write(out_str + "\n")
