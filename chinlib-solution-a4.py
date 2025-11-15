@@ -192,8 +192,6 @@ def prettyPrint(mol: Mol):
         print(f"  Label: {atom.GetIntProp(label)}")
         print("")   # línea en blanco entre átomos
 
-
-
 #
 # Smiles construction
 #
@@ -240,7 +238,7 @@ def get_atom_symbol(atom):
 
 
 # Traverse molecular graph in depth-first order
-def mol_dft(atom):
+def mol_dft(atom: Atom):
     global smiles
 
     # Atom has already been visited
@@ -254,10 +252,9 @@ def mol_dft(atom):
     # Proceed if atom has any neighbors
     if atom.GetDegree():
 
-        # Get sorted list of incident bonds
-        # that have not been visited yet
+        # Get sorted list of incident bonds that have not been visited yet
         bonds = [bond for bond in atom.GetBonds() if not bond.HasProp("VISITED")]
-        bonds.sort(key=lambda x: int(x.GetOtherAtom(atom).GetIntProp("CID")))
+        bonds.sort(key=lambda x: int(x.GetOtherAtom(atom).GetIntProp(label)))
 
         # Iterate over all remaining bonds
         for i in range(len(bonds)):
@@ -292,8 +289,13 @@ def generate_smiles(mol):
     # Get list of atoms
     atoms = mol.GetAtoms()
 
-    # Start at the first atom
-    mol_dft(atoms[0])
+    # Start at the first canonical atom
+    start_atom = None
+    for atom in mol.GetAtoms():
+        if atom.GetIntProp(label) == 1:
+            start_atom = atom
+            break
+    mol_dft(start_atom)
 
     # Make sure that disconnected structures are recognized
     for atom in atoms:
@@ -322,7 +324,7 @@ parser.add_argument("-o", "--overwrite", action="store_true", help="Overwrite ex
 
 # In case of debugging from code editor
 if debug_visual_code:
-    vs_input_file = "resources/chin-materials-a4/aspirin.sdf"
+    vs_input_file = "resources/chin-materials-a4/smiles_01.sdf"
     vs_output_file = "output/log" + str(datetime.now()) + ".txt"
     vs_debug_flag = "-d"
     vs_overwrite = "-o"
