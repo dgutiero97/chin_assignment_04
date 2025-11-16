@@ -187,9 +187,9 @@ def prettyPrint(mol: Mol):
     for atom in mol.GetAtoms():
         # Imprimir línea del átomo
         print(f"Atom: {atom.GetSymbol()}")
-        print(f"  Index: {atom.GetIdx()}")
-        print(f"  Score: {atom.GetIntProp(score)}")
-        print(f"  Label: {atom.GetIntProp(label)}")
+        print(f"Index: {atom.GetIdx()}")
+        print(f"Score: {atom.GetIntProp(score)}")
+        print(f"Label: {atom.GetIntProp(label)}")
         print("")   # línea en blanco entre átomos
 
 #
@@ -310,11 +310,13 @@ def generate_smiles(mol):
 
 
 # ----------------------------------------------------------
-# Main script
+# Main script 
+# Execution from terminal example: 
+# python chinlib-solution-a4.py resources/chin-materials-a4/smiles_01.sdf output/output_canonical_smiles.csv -d --overwrite
 # ----------------------------------------------------------
 
 # Debug mode toggle
-debug_visual_code = True
+debug_visual_code = False
 
 parser = argparse.ArgumentParser()
 parser.add_argument("i", help="SDF MOL input file")
